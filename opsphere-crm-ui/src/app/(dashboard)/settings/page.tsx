@@ -157,8 +157,12 @@ export default function SettingsPage() {
           <div className="space-y-3">
             {[
               { key: 'ANTHROPIC_API_KEY', label: 'Anthropic (Claude AI)', desc: 'AI message generation' },
-              { key: 'SERPER_API_KEY', label: 'Serper', desc: 'LinkedIn prospect discovery' },
+              { key: 'SERPER_API_KEY', label: 'Serper', desc: 'Google prospect discovery' },
+              { key: 'APOLLO_API_KEY', label: 'Apollo.io', desc: 'B2B prospect database search' },
+              { key: 'BING_SEARCH_KEY', label: 'Bing Search', desc: 'Bing prospect discovery' },
               { key: 'PROXYCURL_API_KEY', label: 'Proxycurl', desc: 'LinkedIn profile enrichment' },
+              { key: 'HUNTER_API_KEY', label: 'Hunter.io', desc: 'Email finder & verification' },
+              { key: 'CLEARBIT_API_KEY', label: 'Clearbit', desc: 'Company data enrichment' },
               { key: 'PHANTOMBUSTER_API_KEY', label: 'PhantomBuster', desc: 'LinkedIn outreach automation' },
             ].map((item) => (
               <div key={item.key} className="flex items-center justify-between py-2 border-b border-border last:border-0">
