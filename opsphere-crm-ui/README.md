@@ -35,10 +35,12 @@ src/
 │       ├── dashboard/page.tsx        # Overview stats
 │       ├── campaigns/
 │       │   ├── page.tsx              # Campaign list
-│       │   └── new/page.tsx          # Create campaign with ICP + brand voice
+│       │   ├── new/page.tsx          # Create campaign with ICP + brand voice
+│       │   └── [id]/page.tsx         # Campaign detail: KPIs, stage breakdown, prospect table
 │       ├── prospects/
 │       │   ├── page.tsx              # Prospect list with filters + bulk actions
 │       │   ├── [id]/page.tsx         # Prospect detail + pipeline timeline
+│       │   ├── kanban/page.tsx       # Drag-and-drop Kanban board (HTML5 DnD)
 │       │   └── import/page.tsx       # Drag-and-drop CSV import
 │       ├── leads/page.tsx            # CRM leads + inline convert-to-prospect
 │       ├── messages/page.tsx         # Outreach message queue (approve/reject/send)
@@ -67,8 +69,10 @@ src/
 | `/dashboard` | Stats overview (prospects, messages, meetings, replies) |
 | `/campaigns` | Campaign list with status badges and prospect counts |
 | `/campaigns/new` | Create campaign — ICP definition + brand voice picker |
+| `/campaigns/[id]` | Campaign detail: KPI cards, stage breakdown, bulk-enrich, per-row actions |
 | `/prospects` | Filterable prospect list with enrichment and pipeline status |
 | `/prospects/[id]` | Prospect detail: profile, enrichment data, messages, pipeline timeline |
+| `/prospects/kanban` | Drag-and-drop Kanban board across all 9 pipeline stages |
 | `/prospects/import` | Drag-and-drop CSV upload with column format guide |
 | `/leads` | CRM leads with inline stage management and convert-to-prospect flow |
 | `/messages` | Outreach message queue with approve/reject/send actions |

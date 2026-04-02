@@ -50,9 +50,14 @@ npm run dev            # http://localhost:3000
 | Module | Description |
 |--------|-------------|
 | **Campaigns** | Define ICP, run multi-source discovery, track pipeline metrics |
-| **Prospects** | View, enrich, generate messages, and advance through pipeline stages |
+| **Campaign Detail** | KPI stat cards, stage breakdown filters, per-row enrich/generate, bulk-enrich |
+| **Prospects** | Filterable list with enrichment and pipeline status |
+| **Kanban Board** | Drag-and-drop prospect cards across all 9 pipeline stages |
+| **Prospect Detail** | Full profile, enrichment data, messages, and pipeline event timeline |
+| **CSV Import** | Drag-and-drop CSV upload with column format guide |
 | **Leads** | Lightweight inbound lead capture with stage tracking and campaign conversion |
-| **Messages** | AI-generated LinkedIn outreach with brand voice customisation |
+| **Messages** | AI-generated LinkedIn outreach with approve / reject / edit / send flow |
+| **Pipeline** | Funnel analytics, campaign performance table, and pipeline event log |
 | **Appointments** | Book, track, and action discovery calls |
 | **Brand Voices** | Define tone, value proposition, and style for AI message generation |
 | **Settings** | Organisation profile, account info, and API key reference |

@@ -100,6 +100,8 @@ All routes under `/api/crm/*` require a valid `Authorization: Bearer <token>` he
 | POST | `/api/crm/leads/:id/stage` | Move lead to a pipeline stage |
 | POST | `/api/crm/leads/:id/convert` | Convert lead → prospect |
 | GET | `/api/crm/messages` | List outreach messages |
+| GET | `/api/crm/messages/review-queue` | Messages in draft status (approval queue) |
+| PATCH | `/api/crm/messages/:id` | Edit message body / subject (draft only) |
 | POST | `/api/crm/messages/:id/approve` | Approve message for sending |
 | POST | `/api/crm/messages/:id/reject` | Reject message with reason |
 | POST | `/api/crm/messages/:id/send` | Send via PhantomBuster |
@@ -108,7 +110,8 @@ All routes under `/api/crm/*` require a valid `Authorization: Bearer <token>` he
 | POST | `/api/crm/brand-voices/:id/set-default` | Set as default brand voice |
 | GET/POST | `/api/crm/appointments` | List / create appointments |
 | PATCH | `/api/crm/appointments/:id` | Update appointment status |
-| GET | `/api/crm/pipeline` | Pipeline event feed |
+| GET | `/api/crm/pipeline/events` | Pipeline event feed (filterable, paginated) |
+| GET | `/api/crm/pipeline/stats` | Funnel stage breakdown + campaign performance metrics |
 | GET | `/api/health` | Health check |
 
 ## Discovery Agent — Multi-Source
