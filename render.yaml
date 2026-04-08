@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: opsphere-crm-backend
+    runtime: node
+    rootDir: OPSphere-CRM-Backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
