@@ -3,7 +3,7 @@ services:
     name: opsphere-crm-backend
     runtime: node
     rootDir: OPSphere-CRM-Backend
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     plan: free
     envVars:
