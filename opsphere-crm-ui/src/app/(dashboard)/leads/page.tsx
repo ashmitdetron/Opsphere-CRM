@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { Lead, Campaign } from '@/lib/types';
 import PageHeader from '@/components/page-header';
@@ -118,8 +118,8 @@ export default function LeadsPage() {
             </thead>
             <tbody>
               {leads.map((lead) => (
-                <>
-                  <tr key={lead.id} className="border-b border-border last:border-0 hover:bg-background/50 transition-colors">
+                <React.Fragment key={lead.id}>
+                  <tr className="border-b border-border last:border-0 hover:bg-background/50 transition-colors">
                     {editId === lead.id ? (
                       <>
                         <td className="px-5 py-2">
@@ -197,7 +197,7 @@ export default function LeadsPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
