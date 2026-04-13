@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
   Megaphone,
+  Search,
   KanbanSquare,
   MessageSquare,
   Settings,
@@ -19,6 +20,7 @@ import { api } from '@/lib/api';
 const nav = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Campaigns', href: '/campaigns', icon: Megaphone },
+  { label: 'Find Leads', href: '/discover', icon: Search },
   { label: 'Kanban', href: '/prospects/kanban', icon: KanbanSquare },
   { label: 'Messages', href: '/messages', icon: MessageSquare },
   { label: 'Settings', href: '/settings', icon: Settings },

@@ -134,6 +134,111 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
   }
 });
 
+// ─── GET /api/entities/:id/integrations ─────────────────
+
+const INTEGRATION_KEYS = [
+  'ANTHROPIC_API_KEY',
+  'SERPER_API_KEY',
+  'APOLLO_API_KEY',
+  'BING_SEARCH_KEY',
+  'PROXYCURL_API_KEY',
+  'HUNTER_API_KEY',
+  'CLEARBIT_API_KEY',
+  'PHANTOMBUSTER_API_KEY',
+] as const;
+
+function maskKey(value: string): string {
+  if (!value) return '';
+  if (value.length <= 4) return '••••';
+  return '•'.repeat(Math.min(value.length - 4, 8)) + value.slice(-4);
+}
+
+router.get('/:id/integrations', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authed = req as AuthenticatedRequest;
+    const { id } = req.params;
+
+    const memberCheck = await pool.query(
+      'SELECT 1 FROM crm_entity_members WHERE entity_id = $1 AND user_id = $2',
+      [id, authed.user.sub],
+    );
+    if (memberCheck.rowCount === 0) {
+      throw new AppError(403, 'NOT_MEMBER', 'User is not a member of this organisation');
+    }
+
+    const result = await pool.query<{ integrations: Record<string, string> }>(
+      'SELECT integrations FROM organisations WHERE id = $1',
+      [id],
+    );
+    if (result.rowCount === 0) {
+      throw new AppError(404, 'NOT_FOUND', 'Organisation not found');
+    }
+
+    const stored = result.rows[0].integrations ?? {};
+    const masked: Record<string, { set: boolean; preview: string }> = {};
+    for (const key of INTEGRATION_KEYS) {
+      const val = stored[key] ?? '';
+      masked[key] = { set: !!val, preview: maskKey(val) };
+    }
+
+    res.json({ integrations: masked });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PATCH /api/entities/:id/integrations ───────────────
+
+router.patch('/:id/integrations', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authed = req as AuthenticatedRequest;
+    const { id } = req.params;
+
+    const schema = z.record(z.string()).refine(
+      (obj) => Object.keys(obj).every((k) => (INTEGRATION_KEYS as readonly string[]).includes(k)),
+      { message: 'Unknown integration key' },
+    );
+    const body = schema.parse(req.body);
+
+    const memberCheck = await pool.query(
+      "SELECT 1 FROM crm_entity_members WHERE entity_id = $1 AND user_id = $2 AND role IN ('owner', 'admin')",
+      [id, authed.user.sub],
+    );
+    if (memberCheck.rowCount === 0) {
+      throw new AppError(403, 'FORBIDDEN', 'Only owners and admins can update integrations');
+    }
+
+    const current = await pool.query<{ integrations: Record<string, string> }>(
+      'SELECT integrations FROM organisations WHERE id = $1',
+      [id],
+    );
+    if (current.rowCount === 0) {
+      throw new AppError(404, 'NOT_FOUND', 'Organisation not found');
+    }
+
+    const existing = current.rows[0].integrations ?? {};
+    const merged: Record<string, string> = { ...existing };
+    for (const [key, val] of Object.entries(body)) {
+      if (val.trim()) merged[key] = val.trim();
+    }
+
+    await pool.query(
+      'UPDATE organisations SET integrations = $1 WHERE id = $2',
+      [JSON.stringify(merged), id],
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid request body', details: err.errors },
+      });
+      return;
+    }
+    next(err);
+  }
+});
+
 // ─── GET /api/entities/:id ───────────────────────────────
 
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
