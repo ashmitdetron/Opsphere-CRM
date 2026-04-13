@@ -82,7 +82,7 @@ export interface Prospect {
   industry: string | null;
   location: string | null;
   company_size: string | null;
-  source: 'csv' | 'serper' | 'proxycurl' | 'linkedin' | 'manual' | 'apollo' | 'bing';
+  source: 'csv' | 'serper' | 'proxycurl' | 'linkedin' | 'manual' | 'apollo' | 'bing' | 'hunter';
   source_tier: number;
   enrichment_status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
   enrichment_data: Record<string, unknown>;

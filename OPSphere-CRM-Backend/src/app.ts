@@ -15,6 +15,7 @@ import messageRoutes from './routes/messages.js';
 import pipelineRoutes from './routes/pipeline.js';
 import brandVoiceRoutes from './routes/brand-voices.js';
 import appointmentRoutes from './routes/appointments.js';
+import discoveryRoutes from './routes/discovery.js';
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use('/api/crm/messages', authenticate, entityScope, messageRoutes);
 app.use('/api/crm/pipeline', authenticate, entityScope, pipelineRoutes);
 app.use('/api/crm/brand-voices', authenticate, entityScope, brandVoiceRoutes);
 app.use('/api/crm/appointments', authenticate, entityScope, appointmentRoutes);
+app.use('/api/crm/discovery', authenticate, entityScope, discoveryRoutes);
 
 // ─── Error Handler (must be last) ────────────────────────
 
