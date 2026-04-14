@@ -15,6 +15,7 @@ interface DiscoveryStatus {
   hunter: boolean;
   apollo: boolean;
   bing: boolean;
+  serper: boolean;
 }
 
 interface DiscoveryResult {
@@ -59,7 +60,7 @@ function ErrorBanner({ message }: { message: string }) {
 
 export default function DiscoverPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [status, setStatus] = useState<DiscoveryStatus>({ hunter: false, apollo: false, bing: false });
+  const [status, setStatus] = useState<DiscoveryStatus>({ hunter: false, apollo: false, bing: false, serper: false });
   const [loading, setLoading] = useState(true);
 
   // LinkedIn Search form
@@ -194,12 +195,13 @@ export default function DiscoverPage() {
             <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-accent/20 text-accent">Free</span>
           </h2>
           <span className="text-[10px] text-muted">
-            {status.bing ? 'Using Bing Search API' : 'Using DuckDuckGo (no key needed)'}
+            {status.bing ? 'Using Bing' : status.serper ? 'Using Serper (Google)' : 'No search key — add Serper or Bing'}
           </span>
         </div>
         <p className="text-xs text-muted mb-4">
           Searches <code className="bg-muted/20 px-1 rounded">site:linkedin.com/in</code> for people matching your criteria.
-          Works without any API key — add a Bing key in Settings for more reliable results.
+          Requires <strong>Serper</strong> (free at serper.dev — 2,500 searches) or <strong>Bing</strong> (free at azure.com — 1,000/month).
+          Add either key in Settings → API Keys.
         </p>
 
         <form onSubmit={runSearch} className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
@@ -270,9 +272,9 @@ export default function DiscoverPage() {
                 ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching…</>
                 : <><Zap className="h-3.5 w-3.5" /> Search LinkedIn</>}
             </button>
-            {!status.bing && (
+            {!status.bing && !status.serper && (
               <Link href="/settings" className="text-xs text-muted hover:underline inline-flex items-center gap-1">
-                <Settings className="h-3 w-3" /> Add Bing key for better results
+                <Settings className="h-3 w-3" /> Add Serper or Bing key to enable search
               </Link>
             )}
           </div>

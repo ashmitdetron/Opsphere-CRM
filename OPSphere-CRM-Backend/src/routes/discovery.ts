@@ -136,6 +136,28 @@ function parseLinkedInResult(title: string, url: string): ProspectInput {
   return { full_name, first_name, last_name, job_title, company_name, linkedin_url };
 }
 
+async function serperSearch(query: string, apiKey: string, count: number): Promise<SearchResult[]> {
+  try {
+    const response = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: query, num: Math.min(count, 100) }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) return [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = await response.json() as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data.organic ?? []).map((r: any) => ({
+      title: r.title || '',
+      url: r.link || '',
+      snippet: r.snippet || '',
+    }));
+  } catch {
+    return [];
+  }
+}
+
 async function bingSearch(query: string, apiKey: string, count: number): Promise<SearchResult[]> {
   try {
     const params = new URLSearchParams({ q: query, count: String(count), mkt: 'en-US' });
@@ -223,6 +245,7 @@ router.get('/status', async (req: Request, res: Response, next: NextFunction) =>
       hunter: !!integrations['HUNTER_API_KEY'],
       apollo: !!integrations['APOLLO_API_KEY'],
       bing: !!integrations['BING_SEARCH_KEY'],
+      serper: !!integrations['SERPER_API_KEY'],
     });
   } catch (err) {
     next(err);
@@ -253,6 +276,7 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
 
     const integrations = await getOrgIntegrations(entityId);
     const bingKey = integrations['BING_SEARCH_KEY'];
+    const serperKey = integrations['SERPER_API_KEY'];
 
     const campCheck = await pool.query(
       'SELECT 1 FROM campaigns WHERE id = $1 AND entity_id = $2',
@@ -276,15 +300,15 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
 
     const fetchCount = Math.min(body.limit * 3, 50);
 
-    // Try Bing first, then DDG
+    // Priority: Bing → Serper → DDG (last resort, often blocked server-side)
     let rawResults: SearchResult[] = [];
-    let engine = 'duckduckgo';
+    let engine = 'none';
     let queryUsed = primaryQuery;
 
     if (bingKey) {
       rawResults = await bingSearch(primaryQuery, bingKey, fetchCount);
-      if (rawResults.length > 0) engine = 'bing';
-      // Try remaining titles in parallel if first query is short
+      if (rawResults.length > 0) { engine = 'bing'; }
+      // Run remaining titles in parallel to fill quota
       if (rawResults.length < body.limit && body.job_titles.length > 1) {
         const extras = await Promise.all(
           body.job_titles.slice(1).map(t => bingSearch(buildQuery(t, locationStr, industryStr), bingKey, 10)),
@@ -293,14 +317,20 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
       }
     }
 
+    if (rawResults.length === 0 && serperKey) {
+      rawResults = await serperSearch(primaryQuery, serperKey, fetchCount);
+      if (rawResults.length > 0) { engine = 'serper'; }
+      // Retry looser query
+      if (rawResults.length === 0 && industryStr) {
+        rawResults = await serperSearch(fallbackQuery, serperKey, fetchCount);
+        queryUsed = fallbackQuery;
+        if (rawResults.length > 0) engine = 'serper';
+      }
+    }
+
     if (rawResults.length === 0) {
       rawResults = await duckDuckGoSearch(primaryQuery, fetchCount);
-      queryUsed = primaryQuery;
-      // Retry with looser query (no industry) if no results
-      if (rawResults.length === 0 && industryStr) {
-        rawResults = await duckDuckGoSearch(fallbackQuery, fetchCount);
-        queryUsed = fallbackQuery;
-      }
+      if (rawResults.length > 0) { engine = 'duckduckgo'; }
     }
 
     // Filter to real LinkedIn /in/ profile pages only
