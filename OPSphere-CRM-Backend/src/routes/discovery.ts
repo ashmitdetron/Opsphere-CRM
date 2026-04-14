@@ -159,11 +159,12 @@ async function bingSearch(query: string, apiKey: string, count: number): Promise
 
 async function duckDuckGoSearch(query: string, count: number): Promise<SearchResult[]> {
   try {
-    const params = new URLSearchParams({ q: query });
+    const params = new URLSearchParams({ q: query, kl: 'wt-wt' });
     const response = await fetch(`https://html.duckduckgo.com/html/?${params}`, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
       },
       signal: AbortSignal.timeout(15000),
     });
@@ -172,25 +173,37 @@ async function duckDuckGoSearch(query: string, count: number): Promise<SearchRes
     const html = await response.text();
     const results: SearchResult[] = [];
 
-    const linkRe = /class="result__a"[^>]+href="([^"]*)"[^>]*>(.*?)<\/a>/gs;
-    const snippetRe = /class="result__snippet"[^>]*>(.*?)<\/(?:td|div|span)>/gs;
+    // DDG HTML: <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=...">Title</a>
+    // Attribute order varies — capture the full attribute string, then extract href separately.
+    const aTagRe = /<a\b([^>]*\bclass="result__a"[^>]*)>([\s\S]*?)<\/a>/gi;
+    const snippetRe = /<a\b[^>]*\bclass="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
 
-    const links = [...html.matchAll(linkRe)];
-    const snippets = [...html.matchAll(snippetRe)];
+    const snippets: string[] = [];
+    for (const m of html.matchAll(snippetRe)) {
+      snippets.push(m[1].replace(/<[^>]+>/g, '').trim());
+    }
 
-    for (let i = 0; i < Math.min(links.length, count); i++) {
-      let [, href, rawTitle] = links[i];
-      const title = rawTitle.replace(/<[^>]+>/g, '').trim();
+    let idx = 0;
+    for (const m of html.matchAll(aTagRe)) {
+      if (results.length >= count) break;
 
-      // DuckDuckGo wraps URLs in redirect: decode uddg param
-      const uddgMatch = href.match(/uddg=([^&]+)/);
-      if (uddgMatch) href = decodeURIComponent(uddgMatch[1]);
+      const attrs = m[1];
+      const titleHtml = m[2];
 
-      const snippet = i < snippets.length
-        ? snippets[i][1].replace(/<[^>]+>/g, '').trim()
-        : '';
+      const hrefMatch = attrs.match(/href="([^"]*)"/);
+      if (!hrefMatch) { idx++; continue; }
 
-      if (title && href) results.push({ title, url: href, snippet });
+      let url = hrefMatch[1];
+      // Decode DDG redirect wrapper: //duckduckgo.com/l/?uddg=<encoded-url>
+      const uddgMatch = url.match(/uddg=([^&"]+)/);
+      if (uddgMatch) url = decodeURIComponent(uddgMatch[1]);
+      if (url.startsWith('//')) url = 'https:' + url;
+
+      const title = titleHtml.replace(/<[^>]+>/g, '').trim();
+      const snippet = snippets[idx] ?? '';
+      idx++;
+
+      if (title && url) results.push({ title, url, snippet });
     }
 
     return results;
@@ -247,39 +260,50 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
     );
     if ((campCheck.rowCount ?? 0) === 0) throw new AppError(404, 'NOT_FOUND', 'Campaign not found');
 
-    // Build query: site:linkedin.com/in ("CEO" OR "CTO") "Australia"
-    const titlePart = body.job_titles.length === 1
-      ? `"${body.job_titles[0]}"`
-      : `(${body.job_titles.map(t => `"${t}"`).join(' OR ')})`;
+    // Build query: site:linkedin.com/in "CEO" "India"
+    // Use first title only for primary query — multiple OR terms reduce DDG results
+    const primaryTitle = body.job_titles[0];
+    const locationStr = body.locations[0] ?? '';
+    const industryStr = body.industries[0] ?? '';
 
-    const locationPart = body.locations.length > 0
-      ? (body.locations.length === 1 ? `"${body.locations[0]}"` : `(${body.locations.map(l => `"${l}"`).join(' OR ')})`)
-      : '';
+    const buildQuery = (title: string, location: string, industry: string) =>
+      ['site:linkedin.com/in', `"${title}"`, location ? `"${location}"` : '', industry ? `"${industry}"` : '']
+        .filter(Boolean).join(' ');
 
-    const industryPart = body.industries.length > 0
-      ? body.industries.map(i => `"${i}"`).join(' OR ')
-      : '';
+    // Primary query (specific), fallback query (drop industry for more results)
+    const primaryQuery = buildQuery(primaryTitle, locationStr, industryStr);
+    const fallbackQuery = buildQuery(primaryTitle, locationStr, '');
 
-    const query = ['site:linkedin.com/in', titlePart, locationPart, industryPart]
-      .filter(Boolean).join(' ');
-
-    // Fetch more than needed to account for filtering
     const fetchCount = Math.min(body.limit * 3, 50);
 
-    // Try Bing first (structured, reliable), fall back to DuckDuckGo HTML
+    // Try Bing first, then DDG
     let rawResults: SearchResult[] = [];
     let engine = 'duckduckgo';
+    let queryUsed = primaryQuery;
 
     if (bingKey) {
-      rawResults = await bingSearch(query, bingKey, fetchCount);
+      rawResults = await bingSearch(primaryQuery, bingKey, fetchCount);
       if (rawResults.length > 0) engine = 'bing';
+      // Try remaining titles in parallel if first query is short
+      if (rawResults.length < body.limit && body.job_titles.length > 1) {
+        const extras = await Promise.all(
+          body.job_titles.slice(1).map(t => bingSearch(buildQuery(t, locationStr, industryStr), bingKey, 10)),
+        );
+        rawResults = [...rawResults, ...extras.flat()];
+      }
     }
 
     if (rawResults.length === 0) {
-      rawResults = await duckDuckGoSearch(query, fetchCount);
+      rawResults = await duckDuckGoSearch(primaryQuery, fetchCount);
+      queryUsed = primaryQuery;
+      // Retry with looser query (no industry) if no results
+      if (rawResults.length === 0 && industryStr) {
+        rawResults = await duckDuckGoSearch(fallbackQuery, fetchCount);
+        queryUsed = fallbackQuery;
+      }
     }
 
-    // Filter to only real LinkedIn /in/ profile URLs, skip blocked domains
+    // Filter to real LinkedIn /in/ profile pages only
     const profileResults = rawResults.filter(r => {
       const url = r.url || '';
       if (!url.includes('linkedin.com/in/')) return false;
@@ -331,7 +355,7 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
       saved++;
     }
 
-    res.json({ found: parsed.length, saved, engine });
+    res.json({ found: parsed.length, saved, engine, query: queryUsed });
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid request body', details: err.errors } });

@@ -21,6 +21,7 @@ interface DiscoveryResult {
   found: number;
   saved: number;
   engine?: string;
+  query?: string;
 }
 
 const inputCls = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20';
@@ -35,11 +36,14 @@ function StatusBadge({ configured }: { configured: boolean }) {
 
 function ResultBanner({ result }: { result: DiscoveryResult }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-sm text-green-700">
-      <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
-      Found {result.found} profiles — {result.saved} new prospects added to campaign.
-      {result.engine && (
-        <span className="ml-1 text-green-600 text-xs">via {result.engine}</span>
+    <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-sm text-green-700 space-y-1">
+      <div className="flex items-start gap-2">
+        <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+        Found {result.found} profiles — {result.saved} new prospects added to campaign.
+        {result.engine && <span className="text-green-600 text-xs">via {result.engine}</span>}
+      </div>
+      {result.query && (
+        <p className="text-[11px] text-green-600 font-mono pl-6 break-all">Query: {result.query}</p>
       )}
     </div>
   );
