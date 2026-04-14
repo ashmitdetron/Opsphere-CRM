@@ -200,8 +200,8 @@ export default function DiscoverPage() {
         </div>
         <p className="text-xs text-muted mb-4">
           Searches <code className="bg-muted/20 px-1 rounded">site:linkedin.com/in</code> for people matching your criteria.
-          Requires <strong>Serper</strong> (free at serper.dev — 2,500 searches) or <strong>Bing</strong> (free at azure.com — 1,000/month).
-          Add either key in Settings → API Keys.
+          Requires a <strong>Serper</strong> key (free at serper.dev — 2,500 searches) or <strong>Bing</strong> key (azure.com — 1,000/month free).
+          Add in Settings → API Keys.
         </p>
 
         <form onSubmit={runSearch} className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">

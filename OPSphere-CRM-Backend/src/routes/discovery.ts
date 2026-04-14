@@ -181,61 +181,6 @@ async function bingSearch(query: string, apiKey: string, count: number): Promise
   }
 }
 
-async function duckDuckGoSearch(query: string, count: number): Promise<SearchResult[]> {
-  try {
-    const params = new URLSearchParams({ q: query, kl: 'wt-wt' });
-    const response = await fetch(`https://html.duckduckgo.com/html/?${params}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!response.ok) return [];
-
-    const html = await response.text();
-    const results: SearchResult[] = [];
-
-    // DDG HTML: <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=...">Title</a>
-    // Attribute order varies — capture the full attribute string, then extract href separately.
-    const aTagRe = /<a\b([^>]*\bclass="result__a"[^>]*)>([\s\S]*?)<\/a>/gi;
-    const snippetRe = /<a\b[^>]*\bclass="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
-
-    const snippets: string[] = [];
-    for (const m of html.matchAll(snippetRe)) {
-      snippets.push(m[1].replace(/<[^>]+>/g, '').trim());
-    }
-
-    let idx = 0;
-    for (const m of html.matchAll(aTagRe)) {
-      if (results.length >= count) break;
-
-      const attrs = m[1];
-      const titleHtml = m[2];
-
-      const hrefMatch = attrs.match(/href="([^"]*)"/);
-      if (!hrefMatch) { idx++; continue; }
-
-      let url = hrefMatch[1];
-      // Decode DDG redirect wrapper: //duckduckgo.com/l/?uddg=<encoded-url>
-      const uddgMatch = url.match(/uddg=([^&"]+)/);
-      if (uddgMatch) url = decodeURIComponent(uddgMatch[1]);
-      if (url.startsWith('//')) url = 'https:' + url;
-
-      const title = titleHtml.replace(/<[^>]+>/g, '').trim();
-      const snippet = snippets[idx] ?? '';
-      idx++;
-
-      if (title && url) results.push({ title, url, snippet });
-    }
-
-    return results;
-  } catch {
-    return [];
-  }
-}
-
 // ─── GET /status ─────────────────────────────────────────
 
 router.get('/status', async (req: Request, res: Response, next: NextFunction) => {
@@ -308,7 +253,7 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
 
     const fetchCount = Math.min(body.limit * 3, 50);
 
-    // Priority: Bing → Serper → DDG (last resort, often blocked server-side)
+    // Priority: Bing → Serper
     let rawResults: SearchResult[] = [];
     let engine = 'none';
     let queryUsed = primaryQuery;
@@ -341,10 +286,6 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
       }
     }
 
-    if (rawResults.length === 0) {
-      rawResults = await duckDuckGoSearch(primaryQuery, fetchCount);
-      if (rawResults.length > 0) { engine = 'duckduckgo'; }
-    }
 
     // Filter to real LinkedIn /in/ profile pages only
     const profileResults = rawResults.filter(r => {
