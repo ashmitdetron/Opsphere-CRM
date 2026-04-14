@@ -136,24 +136,28 @@ function parseLinkedInResult(title: string, url: string): ProspectInput {
   return { full_name, first_name, last_name, job_title, company_name, linkedin_url };
 }
 
-async function serperSearch(query: string, apiKey: string, count: number): Promise<SearchResult[]> {
-  const response = await fetch('https://google.serper.dev/search', {
-    method: 'POST',
-    headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ q: query, num: Math.min(count, 100) }),
-    signal: AbortSignal.timeout(10000),
-  });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = await response.json() as any;
-  if (!response.ok) {
-    throw new AppError(502, 'SERPER_ERROR', data?.message || `Serper error ${response.status}`);
+async function serperSearch(query: string, apiKey: string, count: number): Promise<{ results: SearchResult[]; error?: string }> {
+  try {
+    const response = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: query, num: Math.min(count, 100) }),
+      signal: AbortSignal.timeout(10000),
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = await response.json() as any;
+    if (!response.ok) {
+      return { results: [], error: data?.message || `Serper error ${response.status}` };
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { results: (data.organic ?? []).map((r: any) => ({
+      title: r.title || '',
+      url: r.link || '',
+      snippet: r.snippet || '',
+    })) };
+  } catch (e) {
+    return { results: [], error: String(e) };
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data.organic ?? []).map((r: any) => ({
-    title: r.title || '',
-    url: r.link || '',
-    snippet: r.snippet || '',
-  }));
 }
 
 async function bingSearch(query: string, apiKey: string, count: number): Promise<SearchResult[]> {
@@ -287,9 +291,15 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
     const locationStr = body.locations[0] ?? '';
     const industryStr = body.industries[0] ?? '';
 
+    // Bing supports site: operator; Serper free plan blocks any query containing "linkedin.com"
+    // so for Serper we do a plain natural search — Google naturally surfaces LinkedIn profiles.
     const buildQuery = (title: string, location: string, industry: string, useSiteOp: boolean) => {
-      const sitePrefix = useSiteOp ? 'site:linkedin.com/in' : 'linkedin.com/in';
-      return [sitePrefix, `"${title}"`, location ? `"${location}"` : '', industry ? `"${industry}"` : '']
+      if (useSiteOp) {
+        return ['site:linkedin.com/in', `"${title}"`, location ? `"${location}"` : '', industry ? `"${industry}"` : '']
+          .filter(Boolean).join(' ');
+      }
+      // Plain query — no mention of linkedin, Google returns it naturally
+      return [`"${title}"`, location || '', industry || '', 'professional profile']
         .filter(Boolean).join(' ');
     };
 
@@ -315,12 +325,17 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
       }
     }
 
+    let serperError: string | undefined;
     if (rawResults.length === 0 && serperKey) {
-      rawResults = await serperSearch(primaryQuery, serperKey, fetchCount);
+      const s1 = await serperSearch(primaryQuery, serperKey, fetchCount);
+      serperError = s1.error;
+      rawResults = s1.results;
       if (rawResults.length > 0) { engine = 'serper'; }
       // Retry looser query
       if (rawResults.length === 0 && industryStr) {
-        rawResults = await serperSearch(fallbackQuery, serperKey, fetchCount);
+        const s2 = await serperSearch(fallbackQuery, serperKey, fetchCount);
+        serperError = s2.error;
+        rawResults = s2.results;
         queryUsed = fallbackQuery;
         if (rawResults.length > 0) engine = 'serper';
       }
@@ -393,6 +408,7 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
         hasBing: !!bingKey,
         rawCount: rawResults.length,
         profileCount: profileResults.length,
+        serperError,
       },
     });
   } catch (err) {
