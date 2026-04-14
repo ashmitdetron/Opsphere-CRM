@@ -236,15 +236,15 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
     const locationStr = body.locations[0] ?? '';
     const industryStr = body.industries[0] ?? '';
 
-    // Bing supports site: operator; Serper free plan blocks any query containing "linkedin.com"
-    // so for Serper we do a plain natural search — Google naturally surfaces LinkedIn profiles.
+    // Bing supports site: and quoted operators; Serper free plan blocks quoted terms and linkedin.com
+    // so for Serper we send a plain natural language query — Google still surfaces LinkedIn profiles.
     const buildQuery = (title: string, location: string, industry: string, useSiteOp: boolean) => {
       if (useSiteOp) {
         return ['site:linkedin.com/in', `"${title}"`, location ? `"${location}"` : '', industry ? `"${industry}"` : '']
           .filter(Boolean).join(' ');
       }
-      // Plain query — no mention of linkedin, Google returns it naturally
-      return [`"${title}"`, location || '', industry || '', 'professional profile']
+      // Plain query — no quotes, no operators
+      return [title, location, industry, 'LinkedIn profile']
         .filter(Boolean).join(' ');
     };
 
