@@ -137,25 +137,23 @@ function parseLinkedInResult(title: string, url: string): ProspectInput {
 }
 
 async function serperSearch(query: string, apiKey: string, count: number): Promise<SearchResult[]> {
-  try {
-    const response = await fetch('https://google.serper.dev/search', {
-      method: 'POST',
-      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: query, num: Math.min(count, 100) }),
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!response.ok) return [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await response.json() as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data.organic ?? []).map((r: any) => ({
-      title: r.title || '',
-      url: r.link || '',
-      snippet: r.snippet || '',
-    }));
-  } catch {
-    return [];
+  const response = await fetch('https://google.serper.dev/search', {
+    method: 'POST',
+    headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: query, num: Math.min(count, 100) }),
+    signal: AbortSignal.timeout(10000),
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await response.json() as any;
+  if (!response.ok) {
+    throw new AppError(502, 'SERPER_ERROR', data?.message || `Serper error ${response.status}`);
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data.organic ?? []).map((r: any) => ({
+    title: r.title || '',
+    url: r.link || '',
+    snippet: r.snippet || '',
+  }));
 }
 
 async function bingSearch(query: string, apiKey: string, count: number): Promise<SearchResult[]> {
@@ -385,7 +383,18 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
       saved++;
     }
 
-    res.json({ found: parsed.length, saved, engine, query: queryUsed });
+    res.json({
+      found: parsed.length,
+      saved,
+      engine,
+      query: queryUsed,
+      debug: {
+        hasSerper: !!serperKey,
+        hasBing: !!bingKey,
+        rawCount: rawResults.length,
+        profileCount: profileResults.length,
+      },
+    });
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid request body', details: err.errors } });
