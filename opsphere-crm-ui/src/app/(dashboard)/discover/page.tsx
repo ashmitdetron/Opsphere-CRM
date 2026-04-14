@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import PageHeader from '@/components/page-header';
-import { Search, Loader2, AlertCircle, CheckCircle2, Settings } from 'lucide-react';
+import { Search, Loader2, AlertCircle, CheckCircle2, Settings, Zap } from 'lucide-react';
 import Link from 'next/link';
 
 interface Campaign {
@@ -14,27 +14,59 @@ interface Campaign {
 interface DiscoveryStatus {
   hunter: boolean;
   apollo: boolean;
-}
-
-interface DiscoveredProspect {
-  email: string;
-  full_name: string | null;
-  company_name: string | null;
-  job_title: string | null;
+  bing: boolean;
 }
 
 interface DiscoveryResult {
   found: number;
   saved: number;
-  prospects?: DiscoveredProspect[];
+  engine?: string;
 }
 
 const inputCls = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20';
 
+function StatusBadge({ configured }: { configured: boolean }) {
+  return (
+    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${configured ? 'bg-green-100 text-green-700' : 'bg-muted/30 text-muted'}`}>
+      {configured ? 'Configured' : 'Not configured'}
+    </span>
+  );
+}
+
+function ResultBanner({ result }: { result: DiscoveryResult }) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-sm text-green-700">
+      <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+      Found {result.found} profiles — {result.saved} new prospects added to campaign.
+      {result.engine && (
+        <span className="ml-1 text-green-600 text-xs">via {result.engine}</span>
+      )}
+    </div>
+  );
+}
+
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">
+      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />{message}
+    </div>
+  );
+}
+
 export default function DiscoverPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [status, setStatus] = useState<DiscoveryStatus>({ hunter: false, apollo: false });
+  const [status, setStatus] = useState<DiscoveryStatus>({ hunter: false, apollo: false, bing: false });
   const [loading, setLoading] = useState(true);
+
+  // LinkedIn Search form
+  const [searchCampaign, setSearchCampaign] = useState('');
+  const [searchTitles, setSearchTitles] = useState('');
+  const [searchLocations, setSearchLocations] = useState('');
+  const [searchIndustries, setSearchIndustries] = useState('');
+  const [searchLimit, setSearchLimit] = useState(20);
+  const [searchRunning, setSearchRunning] = useState(false);
+  const [searchResult, setSearchResult] = useState<DiscoveryResult | null>(null);
+  const [searchError, setSearchError] = useState('');
 
   // Hunter form
   const [hunterCampaign, setHunterCampaign] = useState('');
@@ -65,6 +97,30 @@ export default function DiscoverPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  async function runSearch(e: React.FormEvent) {
+    e.preventDefault();
+    setSearchError('');
+    setSearchResult(null);
+    setSearchRunning(true);
+    try {
+      const result = await api<DiscoveryResult>('/api/crm/discovery/search', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaign_id: searchCampaign,
+          job_titles: searchTitles.split(',').map(s => s.trim()).filter(Boolean),
+          locations: searchLocations.split(',').map(s => s.trim()).filter(Boolean),
+          industries: searchIndustries.split(',').map(s => s.trim()).filter(Boolean),
+          limit: searchLimit,
+        }),
+      });
+      setSearchResult(result);
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setSearchRunning(false);
+    }
+  }
 
   async function runHunter(e: React.FormEvent) {
     e.preventDefault();
@@ -98,8 +154,8 @@ export default function DiscoverPage() {
         method: 'POST',
         body: JSON.stringify({
           campaign_id: apolloCampaign,
-          job_titles: apolloTitles.split(',').map((s) => s.trim()).filter(Boolean),
-          locations: apolloLocations.split(',').map((s) => s.trim()).filter(Boolean),
+          job_titles: apolloTitles.split(',').map(s => s.trim()).filter(Boolean),
+          locations: apolloLocations.split(',').map(s => s.trim()).filter(Boolean),
           per_page: apolloPerPage,
         }),
       });
@@ -119,67 +175,139 @@ export default function DiscoverPage() {
     );
   }
 
-  const noKeysConfigured = !status.hunter && !status.apollo;
-
   return (
     <div className="space-y-8 max-w-2xl">
       <PageHeader
         title="Find Leads"
-        description="Discover prospects using Hunter.io or Apollo.io and add them directly to a campaign."
+        description="Discover prospects from LinkedIn, Hunter.io, or Apollo.io and add them to a campaign."
       />
 
-      {noKeysConfigured && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>
-            No discovery API keys configured.{' '}
-            <Link href="/settings" className="underline font-medium">Go to Settings → API Keys</Link>{' '}
-            to add your Hunter.io or Apollo.io key.
+      {/* ── LinkedIn Search (free) ── */}
+      <section>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <Search className="h-4 w-4 text-muted" /> LinkedIn Search
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-accent/20 text-accent">Free</span>
+          </h2>
+          <span className="text-[10px] text-muted">
+            {status.bing ? 'Using Bing Search API' : 'Using DuckDuckGo (no key needed)'}
           </span>
         </div>
-      )}
+        <p className="text-xs text-muted mb-4">
+          Searches <code className="bg-muted/20 px-1 rounded">site:linkedin.com/in</code> for people matching your criteria.
+          Works without any API key — add a Bing key in Settings for more reliable results.
+        </p>
 
-      {/* Hunter.io */}
+        <form onSubmit={runSearch} className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
+          {searchError && <ErrorBanner message={searchError} />}
+          {searchResult && <ResultBanner result={searchResult} />}
+
+          <div>
+            <label className="block text-xs font-medium mb-1.5">Campaign *</label>
+            <select required value={searchCampaign} onChange={e => setSearchCampaign(e.target.value)} className={inputCls}>
+              <option value="">Select a campaign…</option>
+              {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium mb-1.5">Job Titles * (comma-separated)</label>
+            <input
+              type="text"
+              required
+              value={searchTitles}
+              onChange={e => setSearchTitles(e.target.value)}
+              className={inputCls}
+              placeholder="CEO, CTO, Head of Engineering"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium mb-1.5">Locations (comma-separated)</label>
+            <input
+              type="text"
+              value={searchLocations}
+              onChange={e => setSearchLocations(e.target.value)}
+              className={inputCls}
+              placeholder="Australia, United States"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium mb-1.5">Industries (comma-separated, optional)</label>
+            <input
+              type="text"
+              value={searchIndustries}
+              onChange={e => setSearchIndustries(e.target.value)}
+              className={inputCls}
+              placeholder="SaaS, Fintech, Manufacturing"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium mb-1.5">Max results (up to 50)</label>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={searchLimit}
+              onChange={e => setSearchLimit(Number(e.target.value))}
+              className={inputCls}
+            />
+          </div>
+
+          <div className="pt-2 flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={searchRunning}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {searchRunning
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching…</>
+                : <><Zap className="h-3.5 w-3.5" /> Search LinkedIn</>}
+            </button>
+            {!status.bing && (
+              <Link href="/settings" className="text-xs text-muted hover:underline inline-flex items-center gap-1">
+                <Settings className="h-3 w-3" /> Add Bing key for better results
+              </Link>
+            )}
+          </div>
+        </form>
+      </section>
+
+      {/* ── Hunter.io ── */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold flex items-center gap-2">
             <Search className="h-4 w-4 text-muted" /> Hunter.io — Email Finder
           </h2>
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${status.hunter ? 'bg-green-100 text-green-700' : 'bg-muted/30 text-muted'}`}>
-            {status.hunter ? 'Configured' : 'Not configured'}
-          </span>
+          <StatusBadge configured={status.hunter} />
         </div>
 
         <form onSubmit={runHunter} className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
-          {hunterError && (
-            <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">
-              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />{hunterError}
-            </div>
-          )}
-          {hunterResult && (
-            <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-sm text-green-700">
-              <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
-              Found {hunterResult.found} contacts — {hunterResult.saved} new prospects added to campaign.
-            </div>
-          )}
+          {hunterError && <ErrorBanner message={hunterError} />}
+          {hunterResult && <ResultBanner result={hunterResult} />}
+
           <div>
             <label className="block text-xs font-medium mb-1.5">Campaign *</label>
-            <select required value={hunterCampaign} onChange={(e) => setHunterCampaign(e.target.value)} className={inputCls}>
+            <select required value={hunterCampaign} onChange={e => setHunterCampaign(e.target.value)} className={inputCls}>
               <option value="">Select a campaign…</option>
-              {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+
           <div>
             <label className="block text-xs font-medium mb-1.5">Company Domain *</label>
             <input
               type="text"
               required
               value={hunterDomain}
-              onChange={(e) => setHunterDomain(e.target.value)}
+              onChange={e => setHunterDomain(e.target.value)}
               className={inputCls}
               placeholder="acmecorp.com"
             />
           </div>
+
           <div>
             <label className="block text-xs font-medium mb-1.5">Limit (max 100)</label>
             <input
@@ -187,11 +315,12 @@ export default function DiscoverPage() {
               min={1}
               max={100}
               value={hunterLimit}
-              onChange={(e) => setHunterLimit(Number(e.target.value))}
+              onChange={e => setHunterLimit(Number(e.target.value))}
               className={inputCls}
             />
           </div>
-          <div className="pt-2">
+
+          <div className="pt-2 flex items-center gap-3">
             <button
               type="submit"
               disabled={hunterRunning || !status.hunter}
@@ -200,7 +329,7 @@ export default function DiscoverPage() {
               {hunterRunning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Running…</> : 'Find Emails'}
             </button>
             {!status.hunter && (
-              <Link href="/settings" className="ml-3 text-xs text-muted hover:underline inline-flex items-center gap-1">
+              <Link href="/settings" className="text-xs text-muted hover:underline inline-flex items-center gap-1">
                 <Settings className="h-3 w-3" /> Add API Key
               </Link>
             )}
@@ -208,56 +337,50 @@ export default function DiscoverPage() {
         </form>
       </section>
 
-      {/* Apollo.io */}
+      {/* ── Apollo.io ── */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold flex items-center gap-2">
             <Search className="h-4 w-4 text-muted" /> Apollo.io — B2B Database
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Paid plan required</span>
           </h2>
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${status.apollo ? 'bg-green-100 text-green-700' : 'bg-muted/30 text-muted'}`}>
-            {status.apollo ? 'Configured' : 'Not configured'}
-          </span>
+          <StatusBadge configured={status.apollo} />
         </div>
 
         <form onSubmit={runApollo} className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
-          {apolloError && (
-            <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-2.5 text-sm text-red-700">
-              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />{apolloError}
-            </div>
-          )}
-          {apolloResult && (
-            <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-sm text-green-700">
-              <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
-              Found {apolloResult.found} people — {apolloResult.saved} new prospects added to campaign.
-            </div>
-          )}
+          {apolloError && <ErrorBanner message={apolloError} />}
+          {apolloResult && <ResultBanner result={apolloResult} />}
+
           <div>
             <label className="block text-xs font-medium mb-1.5">Campaign *</label>
-            <select required value={apolloCampaign} onChange={(e) => setApolloCampaign(e.target.value)} className={inputCls}>
+            <select required value={apolloCampaign} onChange={e => setApolloCampaign(e.target.value)} className={inputCls}>
               <option value="">Select a campaign…</option>
-              {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+
           <div>
             <label className="block text-xs font-medium mb-1.5">Job Titles (comma-separated)</label>
             <input
               type="text"
               value={apolloTitles}
-              onChange={(e) => setApolloTitles(e.target.value)}
+              onChange={e => setApolloTitles(e.target.value)}
               className={inputCls}
               placeholder="CTO, VP Engineering, Head of Product"
             />
           </div>
+
           <div>
             <label className="block text-xs font-medium mb-1.5">Locations (comma-separated)</label>
             <input
               type="text"
               value={apolloLocations}
-              onChange={(e) => setApolloLocations(e.target.value)}
+              onChange={e => setApolloLocations(e.target.value)}
               className={inputCls}
-              placeholder="United States, Canada, United Kingdom"
+              placeholder="United States, Canada"
             />
           </div>
+
           <div>
             <label className="block text-xs font-medium mb-1.5">Results per page (max 100)</label>
             <input
@@ -265,11 +388,12 @@ export default function DiscoverPage() {
               min={1}
               max={100}
               value={apolloPerPage}
-              onChange={(e) => setApolloPerPage(Number(e.target.value))}
+              onChange={e => setApolloPerPage(Number(e.target.value))}
               className={inputCls}
             />
           </div>
-          <div className="pt-2">
+
+          <div className="pt-2 flex items-center gap-3">
             <button
               type="submit"
               disabled={apolloRunning || !status.apollo}
@@ -278,7 +402,7 @@ export default function DiscoverPage() {
               {apolloRunning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Running…</> : 'Search Apollo'}
             </button>
             {!status.apollo && (
-              <Link href="/settings" className="ml-3 text-xs text-muted hover:underline inline-flex items-center gap-1">
+              <Link href="/settings" className="text-xs text-muted hover:underline inline-flex items-center gap-1">
                 <Settings className="h-3 w-3" /> Add API Key
               </Link>
             )}
