@@ -282,19 +282,19 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
     );
     if ((campCheck.rowCount ?? 0) === 0) throw new AppError(404, 'NOT_FOUND', 'Campaign not found');
 
-    // Build query: site:linkedin.com/in "CEO" "India"
-    // Use first title only for primary query — multiple OR terms reduce DDG results
+    // Build query — use site: for Bing (supports it), plain keyword for Serper/DDG (site: blocked on free plans)
     const primaryTitle = body.job_titles[0];
     const locationStr = body.locations[0] ?? '';
     const industryStr = body.industries[0] ?? '';
 
-    const buildQuery = (title: string, location: string, industry: string) =>
-      ['site:linkedin.com/in', `"${title}"`, location ? `"${location}"` : '', industry ? `"${industry}"` : '']
+    const buildQuery = (title: string, location: string, industry: string, useSiteOp: boolean) => {
+      const sitePrefix = useSiteOp ? 'site:linkedin.com/in' : 'linkedin.com/in';
+      return [sitePrefix, `"${title}"`, location ? `"${location}"` : '', industry ? `"${industry}"` : '']
         .filter(Boolean).join(' ');
+    };
 
-    // Primary query (specific), fallback query (drop industry for more results)
-    const primaryQuery = buildQuery(primaryTitle, locationStr, industryStr);
-    const fallbackQuery = buildQuery(primaryTitle, locationStr, '');
+    const primaryQuery = buildQuery(primaryTitle, locationStr, industryStr, !!bingKey);
+    const fallbackQuery = buildQuery(primaryTitle, locationStr, '', !!bingKey);
 
     const fetchCount = Math.min(body.limit * 3, 50);
 
@@ -309,7 +309,7 @@ router.post('/search', async (req: Request, res: Response, next: NextFunction) =
       // Run remaining titles in parallel to fill quota
       if (rawResults.length < body.limit && body.job_titles.length > 1) {
         const extras = await Promise.all(
-          body.job_titles.slice(1).map(t => bingSearch(buildQuery(t, locationStr, industryStr), bingKey, 10)),
+          body.job_titles.slice(1).map(t => bingSearch(buildQuery(t, locationStr, industryStr, true), bingKey, 10)),
         );
         rawResults = [...rawResults, ...extras.flat()];
       }
